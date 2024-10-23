@@ -4,52 +4,70 @@ import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { AlertCircle, Loader2, Upload, X } from "lucide-react";
-import { useRef, useState } from "react";
+import { Input } from "@/components/ui/input";
+import { AlertCircle, Loader2, X } from "lucide-react";
+import { useState } from "react";
 
 export default function Component() {
-  const [image, setImage] = useState<string | null>(null);
+  const [imageUrl, setImageUrl] = useState("");
+  const [loadedImage, setLoadedImage] = useState<string | null>(null);
   const [description, setDescription] = useState<string>("");
   const [hashtags, setHashtags] = useState<string[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const fileInputRef = useRef<HTMLInputElement>(null);
 
-  const handleFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
-    const file = event.target.files?.[0];
-    if (file) {
-      if (file.size > 4 * 1024 * 1024) {
-        setError("File size exceeds 4MB limit. Please choose a smaller file.");
-        return;
-      }
-      setError(null);
-      const reader = new FileReader();
-      reader.onload = (e) => {
-        setImage(e.target?.result as string);
-        generateDescriptionAndHashtags();
-      };
-      reader.readAsDataURL(file);
+  const handleLoadImage = () => {
+    if (!imageUrl) {
+      setError("Please enter an image URL");
+      return;
     }
+
+    setIsLoading(true);
+    setError(null);
+
+    const img = new Image();
+    img.onload = () => {
+      setLoadedImage(imageUrl);
+      generateDescriptionAndHashtags();
+    };
+    img.onerror = () => {
+      setIsLoading(false);
+      setError("Failed to load image. Please check the URL and try again.");
+    };
+    img.src = imageUrl;
   };
 
-  const generateDescriptionAndHashtags = () => {
-    setIsLoading(true);
-    // Simulate API call delay
-    setTimeout(() => {
-      setDescription(
-        "A beautiful sunset over a calm ocean, with vibrant orange and purple hues reflecting off the water."
-      );
-      setHashtags([
-        "sunset",
-        "ocean",
-        "nature",
-        "beautiful",
-        "peaceful",
-        "calm",
-        "vibrant",
-      ]);
+  const generateDescriptionAndHashtags = async () => {
+    try {
+      const response = await fetch("/api/generateDescription", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ imageUrl }),
+      });
+
+      if (!response.ok) {
+        const data = await response.json();
+        setError(
+          data.error ||
+            "An error occurred while generating the description and hashtags."
+        );
+        setIsLoading(false);
+        return;
+      }
+
+      const data = await response.json();
+      setDescription(data.description);
+      setHashtags(data.hashtags);
       setIsLoading(false);
-    }, 2000);
+    } catch (error) {
+      console.error("Error fetching description and hashtags:", error);
+      setError(
+        "An error occurred while generating the description and hashtags."
+      );
+      setIsLoading(false);
+    }
   };
 
   const removeHashtag = (tag: string) => {
@@ -59,41 +77,32 @@ export default function Component() {
   return (
     <Card className="w-full max-w-md">
       <CardHeader>
-        <CardTitle>Image Upload and Description</CardTitle>
+        <CardTitle>Image Description and Hashtag Generator</CardTitle>
       </CardHeader>
       <CardContent className="space-y-4">
-        <div className="flex justify-center">
-          <Button
-            onClick={() => fileInputRef.current?.click()}
-            className="w-full"
-          >
-            <Upload className="mr-2 h-4 w-4" /> Upload Image
-          </Button>
-          <input
-            type="file"
-            ref={fileInputRef}
-            onChange={handleFileChange}
-            accept="image/*"
-            className="hidden"
+        <div className="flex space-x-2">
+          <Input
+            type="url"
+            placeholder="Paste image URL here"
+            value={imageUrl}
+            onChange={(e) => setImageUrl(e.target.value)}
+            aria-label="Image URL"
           />
+          <Button onClick={handleLoadImage} disabled={isLoading}>
+            {isLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : "Load"}
+          </Button>
         </div>
-        <Alert variant="default" className="mt-2">
-          <AlertCircle className="h-4 w-4" />
-          <AlertDescription>
-            Please note: We don't allow images over 4MB in size.
-          </AlertDescription>
-        </Alert>
         {error && (
-          <Alert variant="destructive" className="mt-2">
+          <Alert variant="destructive">
             <AlertCircle className="h-4 w-4" />
             <AlertDescription>{error}</AlertDescription>
           </Alert>
         )}
-        {image && (
+        {loadedImage && (
           <div className="mt-4">
             <img
-              src={image}
-              alt="Uploaded"
+              src={loadedImage}
+              alt="Loaded"
               className="w-full h-48 object-cover rounded-md"
             />
           </div>
@@ -121,6 +130,7 @@ export default function Component() {
                     size="sm"
                     className="h-4 w-4 p-0 ml-2"
                     onClick={() => removeHashtag(tag)}
+                    aria-label={`Remove ${tag} hashtag`}
                   >
                     <X className="h-3 w-3" />
                   </Button>
